@@ -34,7 +34,7 @@ setup(
     maintainer_email="tech@beamng.gmbh",
     description="Integration of BeamNG.tech into the ROS2 ecosystem.",
     license="MIT",
-    tests_require=["pytest"],
+    #tests_require=["pytest"],
     entry_points={
         "console_scripts": [
             "beamng_bridge = beamng_ros2.beamng:main",

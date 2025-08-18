@@ -16,7 +16,7 @@ setup(
     maintainer_email="tech@beamng.gmbh",
     description="Integration of BeamNG.tech into the ROS2 ecosystem.",
     license="MIT",
-    tests_require=["pytest"],
+    #tests_require=["pytest"],
     entry_points={
         "console_scripts": [
             "teleop = beamng_teleop_keyboard.teleop:main",
