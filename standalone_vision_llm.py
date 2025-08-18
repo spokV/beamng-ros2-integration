@@ -42,7 +42,7 @@ class StandaloneVisionLLM(Node):
         self.prompt_interval = prompt_interval  # Generate prompt every N seconds
         self.llm_config = {
             "provider": "openrouter",
-            "api_key": "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",
+            "api_key": "",
             "model": "anthropic/claude-3-haiku",
             "temperature": 0.7,
             "max_tokens": 300
