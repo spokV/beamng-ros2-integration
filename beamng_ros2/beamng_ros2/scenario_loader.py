@@ -5,12 +5,31 @@ are provided in the ``/config/scenarios/`` directory.
 
 from typing import Any, Callable, Dict, List, Tuple
 
-from beamng_ros2.publishers import SensorPublisher, StatePublisher
+from beamng_ros2.publishers import SensorPublisher, StatePublisher, DrivingPromptPublisher
+from beamng_ros2.publishers.prompt import create_adaptive_prompt_config
 from beamngpy import BeamNGpy, Scenario, Vehicle
 
 
-def decode_sensors(sensors_spec: List[Dict[str, Any]]) -> List[SensorPublisher]:
+def decode_sensors(sensors_spec: List[Dict[str, Any]], scenario_spec: Dict[str, Any] = None) -> List[SensorPublisher]:
     sensor_list: List[SensorPublisher] = [StatePublisher("state", {})]
+    
+    # Add driving prompt publisher for VLA training data annotation
+    if scenario_spec:
+        try:
+            prompt_config = create_adaptive_prompt_config(scenario_spec)
+            if prompt_config:
+                # Log which config was used
+                if "prompt_config_file" in scenario_spec:
+                    print(f"[INFO] Using external prompt config: {scenario_spec['prompt_config_file']}")
+                else:
+                    print("[INFO] Using auto-generated prompt config")
+                sensor_list.append(DrivingPromptPublisher("driving_prompt", prompt_config))
+            else:
+                print("Warning: Failed to create prompt config, skipping DrivingPromptPublisher")
+        except Exception as e:
+            print(f"Error creating DrivingPromptPublisher: {e}")
+            # Continue without the driving prompt publisher
+    
     for s_spec in sensors_spec:
         sensor_list.append(
             SensorPublisher.create(s_spec.pop("name"), s_spec.pop("type"), s_spec)
@@ -45,7 +64,7 @@ def decode_scenario(
             options=v_spec.get("options", {}),
         )
 
-        ros_sensors = decode_sensors(v_spec.get("sensors", {}))
+        ros_sensors = decode_sensors(v_spec.get("sensors", {}), scenario_spec)
         on_scenario_start_vehicle: List[Callable[[Vehicle], None]] = []
         for sensor in ros_sensors:
             sensor.pre_scenario_start(vehicle)

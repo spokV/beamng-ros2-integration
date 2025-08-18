@@ -1,5 +1,6 @@
 from .base import BeamNGPublisher
 from .coupling import CouplingPublisher
+from .prompt import DrivingPromptPublisher
 from .road_network import NetworkPublisher
 from .sensors import (
     AdvancedIMUPublisher,
