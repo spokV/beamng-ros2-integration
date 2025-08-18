@@ -1,0 +1,60 @@
+{
+  "version": 1.0,
+  "level": "johnson_valley",
+  "name": "johnson_valley_vla_training",
+  "weather_presets": "clear",
+  "time_of_day": "midday",
+  "vehicles": [
+    {
+      "name": "ego",
+      "model": "rockbouncer",
+      "pos": [
+        -1168.0,
+        252.283,
+        121.961
+      ],
+      "rot": [0.0172, 0.0615, -0.3321, 0.9402],
+      "sensors": [
+        {
+          "name": "electrics",
+          "type": "Electrics"
+        },
+        {
+          "name": "damage",
+          "type": "Damage"
+        },
+        {
+          "name": "powertrain",
+          "type": "Powertrain"
+        },
+        {
+          "name": "gps",
+          "type": "GPS"
+        },
+        {
+          "name": "imu",
+          "type": "IMU",
+          "pos": [0.0, 0.0, 1.0]
+        },
+        {
+          "name": "front_cam",
+          "type": "Camera.default",
+          "pos": [
+            0.0,
+            -2.1,
+            2.0
+          ],
+          "resolution": [
+            1280,
+            720
+          ],
+          "field_of_view_y": 70
+        },
+        {
+          "name": "mesh",
+          "type": "Mesh"
+        }
+      ]
+    }
+  ]
+}
