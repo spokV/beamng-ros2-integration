@@ -1,5 +1,11 @@
 #!/bin/bash
 
+# Instructions for recording bags:
+# 1. Run BeamNG bridge: ros2 run beamng_ros2 beamng_bridge
+# 2. Start scenario: ros2 service call /beamng_bridge/start_scenario beamng_msgs/srv/StartScenario "{path_to_scenario_definition: '/config/scenarios/johnson_valley.json'}"
+# 3. Run vision LLM client: ./scripts/run_llm_prompt_client.sh
+# 4. Run this script to start recording
+
 # Source ROS2 environment
 source /opt/ros/jazzy/setup.bash
 source /home/spok/ros2_ws/install/setup.bash
