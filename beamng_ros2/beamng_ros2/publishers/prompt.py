@@ -116,10 +116,9 @@ class DrivingPromptPublisher(VehiclePublisher):
         )
         node.get_logger().info(f"Stop prompt publisher service available at ~/stop_prompt_publisher")
         
-        # Set up camera subscriber if camera input is enabled
+        # Note: Camera input will use direct sensor access instead of ROS subscription
         if self.use_camera_input:
-            node.get_logger().info(f"Camera input enabled - setting up subscriber (use_camera_input={self.use_camera_input})")
-            self._setup_camera_subscriber(node)
+            node.get_logger().info(f"Camera input enabled - using direct sensor access (use_camera_input={self.use_camera_input})")
         else:
             node.get_logger().info(f"Camera input disabled (use_camera_input={self.use_camera_input})")
     
@@ -183,38 +182,56 @@ class DrivingPromptPublisher(VehiclePublisher):
                 depth=1
             )
             
-            # Subscribe to the camera topic - use relative path matching the camera publisher
-            camera_topic = f"~/sensors/front_cam/colour"
-            self.camera_subscriber = node.create_subscription(
-                Image,
-                camera_topic,
-                self._camera_callback,
-                qos_profile
-            )
-            node.get_logger().info(f"Camera subscriber created for topic: {camera_topic} with RELIABLE QoS")
+            # Try multiple topic name possibilities with different QoS settings
+            topic_candidates = [
+                "~/sensors/front_cam/colour",              # Relative path in vehicle namespace
+                "/vehicles/ego/sensors/front_cam/colour",  # Absolute path (confirmed working in test)
+            ]
+            
+            # Try both strict QoS and default QoS
+            qos_configs = [
+                ("RELIABLE_QoS", qos_profile),
+                ("DEFAULT_QoS", 10),  # Default QoS with depth 10
+            ]
+            
+            self.camera_subscribers = []
+            for i, camera_topic in enumerate(topic_candidates):
+                for j, (qos_name, qos_setting) in enumerate(qos_configs):
+                    try:
+                        subscriber = node.create_subscription(
+                            Image,
+                            camera_topic,
+                            lambda msg, topic=camera_topic, qos=qos_name: self._camera_callback(msg, f"{topic}_{qos}"),
+                            qos_setting
+                        )
+                        self.camera_subscribers.append((f"{camera_topic}_{qos_name}", subscriber))
+                        node.get_logger().info(f"Camera subscriber #{len(self.camera_subscribers)} created for topic: {camera_topic} with {qos_name}")
+                    except Exception as e:
+                        node.get_logger().error(f"Failed to create subscriber for {camera_topic} with {qos_name}: {e}")
+            
+            node.get_logger().info(f"Created {len(self.camera_subscribers)} camera subscribers total")
             
             # Store node reference for debugging
             self._node_ref = node
             
-            # Try to immediately check if we can see the topic
-            import threading
-            import time
-            def delayed_check():
-                time.sleep(2)  # Wait a bit for initialization
+            # Periodic status check to debug camera subscription
+            def status_check():
                 try:
-                    # Force a spin to process any pending callbacks
-                    import rclpy
-                    rclpy.spin_once(node, timeout_sec=0.1)
-                    print(f"[CAMERA] Camera subscriber status check - callback count: {getattr(self, '_camera_callback_count', 0)}")
+                    count = getattr(self, '_camera_callback_count', 0)
+                    print(f"[CAMERA] Camera subscriber status - callback count: {count}")
+                    print(f"[CAMERA] Active subscribers: {len(self.camera_subscribers)}")
+                    for topic, subscriber in self.camera_subscribers:
+                        print(f"[CAMERA]   - {topic}: {type(subscriber).__name__}")
                 except Exception as e:
-                    print(f"[CAMERA] Error in delayed check: {e}")
+                    print(f"[CAMERA] Error in status check: {e}")
             
-            threading.Thread(target=delayed_check, daemon=True).start()
+            # Create a recurring timer for continuous monitoring
+            self._status_timer = node.create_timer(10.0, status_check)  # Every 10 seconds
             
         except Exception as e:
             node.get_logger().error(f"Failed to create camera subscriber: {e}")
     
-    def _camera_callback(self, msg):
+    def _camera_callback(self, msg, topic_name="unknown"):
         """Callback for camera image messages."""
         try:
             # Store the latest camera message
@@ -226,7 +243,7 @@ class DrivingPromptPublisher(VehiclePublisher):
             
             # Log first few messages and then occasionally to confirm messages are being received
             if self._camera_callback_count <= 3 or self._camera_callback_count % 20 == 0:
-                print(f"[CAMERA] Received image #{self._camera_callback_count}: {msg.width}x{msg.height}, encoding={msg.encoding}")
+                print(f"[CAMERA] Received image #{self._camera_callback_count} from {topic_name}: {msg.width}x{msg.height}, encoding={msg.encoding}")
             
         except Exception as e:
             print(f"[CAMERA] Error in camera callback: {e}")
@@ -260,17 +277,12 @@ class DrivingPromptPublisher(VehiclePublisher):
         print("[LLM] Worker thread stopped")
     
     def _encode_camera_image(self) -> Optional[str]:
-        """Encode current camera image to base64 for LLM input using ROS topic data or BeamNG sensor."""
+        """Encode current camera image to base64 for LLM input using direct BeamNG sensor access."""
         try:
             if not self.use_camera_input:
                 return None
             
-            # Try ROS topic approach first
-            if self.latest_camera_image is not None:
-                return self._encode_from_ros_image()
-            
-            # Fallback to BeamNG sensor approach
-            print(f"[CAMERA] No ROS image received, trying BeamNG sensor fallback")
+            # Use direct BeamNG sensor access (bypassing ROS subscription issues)
             return self._encode_from_beamng_sensor()
             
         except Exception as e:
@@ -321,28 +333,54 @@ class DrivingPromptPublisher(VehiclePublisher):
                 print(f"[CAMERA] No vehicle available for BeamNG sensor access")
                 return None
             
-            # Try to get camera sensor from vehicle
+            # Try to access camera sensor data directly (like state sensor)
             camera_sensor_name = 'front_cam'  # This should match the sensor name in the scenario
             
-            # Access the sensor data directly
-            state_data = self.vehicle.sensors.poll()
+            # Debug the vehicle and sensors object structure
+            print(f"[CAMERA] Vehicle type: {type(self.vehicle)}")
+            print(f"[CAMERA] Vehicle sensors type: {type(self.vehicle.sensors)}")
+            print(f"[CAMERA] Vehicle sensors dir: {dir(self.vehicle.sensors)[:10]}...")  # Show first 10 attributes
             
-            if state_data is None:
-                print(f"[CAMERA] Vehicle sensor polling returned None")
+            try:
+                # Try different ways to access sensor data
+                if hasattr(self.vehicle.sensors, '_sensors'):
+                    available_sensors = list(self.vehicle.sensors._sensors.keys())
+                    print(f"[CAMERA] Available sensors via _sensors: {available_sensors}")
+                    
+                    # Check if camera sensor is available
+                    if camera_sensor_name not in self.vehicle.sensors._sensors:
+                        print(f"[CAMERA] Camera sensor '{camera_sensor_name}' not available yet. Expected sensors from scenario: front_cam, gps, imu, mesh, powertrain")
+                        print(f"[CAMERA] This suggests sensors are still being initialized. Will retry later.")
+                        return None
+                    
+                    if camera_sensor_name in self.vehicle.sensors._sensors:
+                        camera_sensor = self.vehicle.sensors._sensors[camera_sensor_name]
+                        print(f"[CAMERA] Camera sensor type: {type(camera_sensor)}")
+                        if hasattr(camera_sensor, 'data'):
+                            camera_sensor_data = camera_sensor.data
+                            print(f"[CAMERA] Camera sensor data keys: {list(camera_sensor_data.keys()) if camera_sensor_data else 'None'}")
+                        else:
+                            print(f"[CAMERA] Camera sensor has no .data attribute")
+                            return None
+                    else:
+                        print(f"[CAMERA] Camera sensor '{camera_sensor_name}' not in _sensors")
+                        return None
+                else:
+                    print(f"[CAMERA] No _sensors attribute found")
+                    return None
+                
+            except Exception as e:
+                print(f"[CAMERA] Error accessing camera sensor: {e}")
+                import traceback
+                print(f"[CAMERA] Traceback: {traceback.format_exc()}")
                 return None
             
-            if camera_sensor_name not in state_data:
-                print(f"[CAMERA] Camera sensor '{camera_sensor_name}' not found in sensor data. Available: {list(state_data.keys())}")
-                return None
-            
-            camera_data = state_data[camera_sensor_name]
-            
-            if camera_data is None or 'colour' not in camera_data:
+            if not camera_sensor_data or 'colour' not in camera_sensor_data:
                 print(f"[CAMERA] No colour data in camera sensor")
                 return None
             
             # Get the image data
-            colour_data = camera_data['colour']
+            colour_data = camera_sensor_data['colour']
             
             # Convert numpy array to PIL Image
             import numpy as np

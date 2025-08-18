@@ -14,6 +14,7 @@ def decode_sensors(sensors_spec: List[Dict[str, Any]], scenario_spec: Dict[str, 
     sensor_list: List[SensorPublisher] = [StatePublisher("state", {})]
     
     # Add driving prompt publisher for VLA training data annotation
+    """
     if scenario_spec:
         try:
             prompt_config = create_adaptive_prompt_config(scenario_spec)
@@ -29,7 +30,7 @@ def decode_sensors(sensors_spec: List[Dict[str, Any]], scenario_spec: Dict[str, 
         except Exception as e:
             print(f"Error creating DrivingPromptPublisher: {e}")
             # Continue without the driving prompt publisher
-    
+    """
     for s_spec in sensors_spec:
         sensor_list.append(
             SensorPublisher.create(s_spec.pop("name"), s_spec.pop("type"), s_spec)

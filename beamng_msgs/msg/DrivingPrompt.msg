@@ -26,3 +26,6 @@ geometry_msgs/Point target_location
 # Additional metadata for VLA training
 string difficulty_level
 string[] required_skills
+
+# Current vehicle state
+float32 vehicle_speed  # Current vehicle speed in m/s
