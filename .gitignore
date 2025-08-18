@@ -12,6 +12,7 @@ build/
 develop-eggs/
 dist/
 downloads/
+plans/
 eggs/
 .eggs/
 lib/
@@ -148,7 +149,7 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
-
+pyrightconfig.json
 # Cython debug symbols
 cython_debug/
 
@@ -169,3 +170,5 @@ docs_*
 /log
 
 /docs/production
+
+.vscode/
