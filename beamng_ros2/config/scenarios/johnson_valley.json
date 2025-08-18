@@ -2,8 +2,6 @@
   "version": 1.0,
   "level": "johnson_valley",
   "name": "johnson_valley_vla_training",
-  "weather_presets": "clear",
-  "time_of_day": "midday",
   "vehicles": [
     {
       "name": "ego",
@@ -53,6 +51,10 @@
         {
           "name": "mesh",
           "type": "Mesh"
+        },
+        {
+          "name": "state",
+          "type": "State"
         }
       ]
     }
