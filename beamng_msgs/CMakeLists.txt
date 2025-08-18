@@ -31,6 +31,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/CosimulationData.msg"
   "msg/CosimulationInput.msg"
   "msg/CubicPolynomial.msg"
+  "msg/DrivingPrompt.msg"
   "msg/ElectricsSensor.msg"
   "msg/DamageSensor.msg"
   "msg/Float64.msg"
