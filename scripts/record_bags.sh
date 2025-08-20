@@ -10,8 +10,13 @@
 source /opt/ros/jazzy/setup.bash
 source /home/spok/ros2_ws/install/setup.bash
 
+# Create output directory if it doesn't exist
+OUTPUT_DIR="/media/spok/data/beamng/rosbags"
+mkdir -p "$OUTPUT_DIR"
+
 ros2 bag record -o \
-/media/spok/data/beamng/rosbags/offroad_drive_$(date +%Y%m%d_%H%M%S) \
+"$OUTPUT_DIR/offroad_drive_$(date +%Y%m%d_%H%M%S)" \
+/tf \
 /vehicles/ego/sensors/front_cam/colour \
 /vehicles/ego/sensors/state \
 /vehicles/ego/sensors/electrics \
@@ -19,5 +24,5 @@ ros2 bag record -o \
 /vehicles/ego/sensors/lidar \
 /vehicles/ego/sensors/powertrain \
 /vehicles/ego/sensors/damage \
-/standalone_vision_llm/driving_prompt \
+/vision_llm/driving_prompt \
 --max-bag-size 0
