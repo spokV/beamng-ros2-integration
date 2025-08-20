@@ -10,7 +10,8 @@ BEAMNG_HOST="127.0.0.1"
 BEAMNG_PORT="25252"  # Default BeamNG -tcom port
 BEAMNG_BINARY="/home/spok/Downloads/BeamNG.tech.v0.36.4.0/BinLinux/BeamNG.tech.x64"
 SCENARIO_CONFIG="/config/scenarios/johnson_valley.json"
-VISION_CONFIG="/home/spok/ros2_ws/src/beamng-ros2-integration/examples/vision_prompt_config.json"
+VISION_CONFIG="/home/spok/ros2_ws/src/beamng-ros2-integration/configs/vision_prompt_config.json"
+PUBLISH_RATE_SEC="0.01"  # Publish rate in seconds (0.01 = 100Hz, 0.033 = 30Hz, 0.1 = 10Hz)
 MAX_WAIT_TIME=60
 CHECK_INTERVAL=2
 
@@ -303,7 +304,7 @@ start_bridge() {
     PYTHON_EXEC=$(which python)
     export PYTHONPATH="/home/spok/miniconda/envs/jazzy_env/lib/python3.12/site-packages:$PYTHONPATH"
     
-    ros2 run beamng_ros2 beamng_bridge --ros-args -p host:=$BEAMNG_HOST -p port:=$BEAMNG_PORT -p launch:=false -p update_sec:=0.1 2>/dev/null &
+    ros2 run beamng_ros2 beamng_bridge --ros-args -p host:=$BEAMNG_HOST -p port:=$BEAMNG_PORT -p launch:=false -p update_sec:=$PUBLISH_RATE_SEC 2>/dev/null &
     
     BRIDGE_PID=$!
     
@@ -408,6 +409,7 @@ trap cleanup EXIT INT TERM
 main() {
     print_status "Starting BeamNG ROS2 automation script..."
     print_status "Host: $BEAMNG_HOST, Port: $BEAMNG_PORT"
+    print_status "Publish Rate: $PUBLISH_RATE_SEC sec ($(python3 -c "print(f'{1/$PUBLISH_RATE_SEC:.1f}')") Hz)"
     print_status "Scenario: $SCENARIO_CONFIG"
     print_status "Vision Config: $VISION_CONFIG"
     print_status ""

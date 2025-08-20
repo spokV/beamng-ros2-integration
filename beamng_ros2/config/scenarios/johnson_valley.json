@@ -2,15 +2,13 @@
   "version": 1.0,
   "level": "johnson_valley",
   "name": "johnson_valley_vla_training",
+  "time_of_day": 0.22,
+  "_comment": "4 profound lighting conditions: 0.0=Noon (bright overhead), 0.125=Afternoon, 0.22=Sunset (golden hour), 0.375=Midnight (darkness), 0.77=Sunrise (golden hour)",  
   "vehicles": [
     {
       "name": "ego",
       "model": "rockbouncer",
-      "pos": [
-        -1168.0,
-        252.283,
-        121.961
-      ],
+      "pos": [-1168.0, 252.283, 121.961],
       "rot": [0.0172, 0.0615, -0.3321, 0.9402],
       "sensors": [
         {

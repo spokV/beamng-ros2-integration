@@ -174,3 +174,4 @@ docs_*
 .vscode/
 output/
 examples/
+configs/
