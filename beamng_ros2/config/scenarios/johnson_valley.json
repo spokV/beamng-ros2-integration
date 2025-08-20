@@ -26,10 +26,6 @@
           "type": "Powertrain"
         },
         {
-          "name": "gps",
-          "type": "GPS"
-        },
-        {
           "name": "imu",
           "type": "IMU",
           "pos": [0.0, 0.0, 1.0]
@@ -43,10 +39,12 @@
             2.0
           ],
           "resolution": [
-            1280,
-            720
+            640,
+            480
           ],
-          "field_of_view_y": 70
+          "field_of_view_y": 70,
+          "is_streaming": true,
+          "is_using_shared_memory": true
         },
         {
           "name": "mesh",
