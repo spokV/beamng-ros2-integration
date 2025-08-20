@@ -173,4 +173,4 @@ docs_*
 
 .vscode/
 output/
-/examples
+examples/
