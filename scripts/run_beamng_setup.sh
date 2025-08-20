@@ -345,9 +345,22 @@ start_llm_client() {
     # Wait for scenario to be fully loaded
     sleep 5
     
+    # Start listening for the first prompt BEFORE starting the LLM client
+    print_status "Setting up prompt listener before starting LLM client..."
+    (
+        if timeout 10 ros2 topic echo /vision_llm/driving_prompt --once >/dev/null 2>&1; then
+            echo "FIRST_PROMPT_DETECTED" > /tmp/first_prompt_ready
+        fi
+    ) &
+    PROMPT_LISTENER_PID=$!
+    
+    # Give the listener a moment to start
+    sleep 2
+    
     # Start the standalone vision LLM client with config file
+    print_status "Starting LLM client with config: $VISION_CONFIG"
     python /home/spok/ros2_ws/src/beamng-ros2-integration/beamng_ros2/beamng_ros2/examples/vision_llm_client.py \
-        --config "$VISION_CONFIG" >/dev/null 2>&1 &
+        --config "$VISION_CONFIG" --log-level warn &
     
     LLM_PID=$!
     
@@ -358,9 +371,67 @@ start_llm_client() {
     if kill -0 $LLM_PID 2>/dev/null; then
         print_success "LLM client started successfully (PID: $LLM_PID)"
         echo $LLM_PID > /tmp/llm_client.pid
+        
+        # Extract prompt interval from config file
+        PROMPT_INTERVAL=$(grep '"prompt_interval_seconds"' "$VISION_CONFIG" | sed 's/.*"prompt_interval_seconds": *\([0-9.]*\).*/\1/' | head -1)
+        if [ -z "$PROMPT_INTERVAL" ]; then
+            PROMPT_INTERVAL="10"  # fallback default
+        fi
+        WAIT_TIME=$(echo "$PROMPT_INTERVAL * 2" | bc 2>/dev/null || echo "20")
+        WAIT_TIME=${WAIT_TIME%.*}  # remove decimal part
+        
+        # Wait for first prompt detection
+        print_status "Waiting for first LLM prompt (prompts every ${PROMPT_INTERVAL}s)..."
+        for i in $(seq 1 $WAIT_TIME); do
+            if [ -f /tmp/first_prompt_ready ]; then
+                rm -f /tmp/first_prompt_ready
+                print_success "First prompt detected!"
+                break
+            fi
+            sleep 1
+            echo -n "."
+        done
+        
+        # Clean up listener if still running
+        kill $PROMPT_LISTENER_PID 2>/dev/null || true
+        
+        echo ""
+        print_success "System is ready for recording!"
+        print_status ""
+        print_status "Ready to record! You can now:"
+        print_status "1. Run: ./scripts/record_bags.sh"  
+        print_status "2. Start driving in BeamNG"
+        print_status "3. Stop recording with Ctrl+C"
+        print_status ""
     else
-        print_error "LLM client failed to start"
+        print_error "LLM client failed to start - check for Python/config errors"
+        # Clean up prompt listener
+        kill $PROMPT_LISTENER_PID 2>/dev/null || true
         exit 1
+    fi
+}
+
+# Function to wait for first LLM prompt publication
+wait_for_first_prompt() {
+    print_status "Monitoring /vision_llm/driving_prompt topic for first message..."
+    
+    # Simply wait for the first message with a generous timeout
+    # This will block until a message is received or timeout occurs
+    if timeout 30 ros2 topic echo /vision_llm/driving_prompt --once >/dev/null 2>&1; then
+        print_success "First LLM prompt published successfully!"
+        print_success "System is ready for recording!"
+        print_status ""
+        print_status "Ready to record! You can now:"
+        print_status "1. Run: ./scripts/record_bags.sh"
+        print_status "2. Start driving in BeamNG"
+        print_status "3. Stop recording with Ctrl+C"
+        print_status ""
+        return 0
+    else
+        print_warning "Timeout waiting for first prompt (30s)"
+        print_warning "LLM may be taking longer than expected - system should still work"
+        print_status "You can proceed with recording, but check for LLM prompt errors"
+        return 1
     fi
 }
 

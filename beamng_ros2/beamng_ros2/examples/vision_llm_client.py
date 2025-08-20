@@ -17,6 +17,7 @@ Usage:
 
 import rclpy
 from rclpy.node import Node
+from rclpy.executors import ExternalShutdownException
 import argparse
 from sensor_msgs.msg import Image
 from beamng_msgs.msg import StateSensor, DrivingPrompt
@@ -35,7 +36,7 @@ from typing import Optional, Dict, Any
 
 class StandaloneVisionLLM(Node):
     def __init__(self, prompt_interval=10.0, config_file=None):
-        super().__init__('standalone_vision_llm')
+        super().__init__('vision_llm')
         
         # Configuration
         self.prompt_interval = prompt_interval  # Generate prompt every N seconds
@@ -55,7 +56,7 @@ class StandaloneVisionLLM(Node):
         # Debug logging for API key
         api_key = self.llm_config.get("api_key", "")
         if api_key:
-            self.get_logger().info(f"Loaded API key from config: {api_key[:10]}...")
+            self.get_logger().debug(f"Loaded API key from config: {api_key[:10]}...")
         else:
             self.get_logger().warn("No API key found in config file - LLM calls will fail")
         
@@ -65,6 +66,9 @@ class StandaloneVisionLLM(Node):
         self.camera_callback_count = 0
         self.state_callback_count = 0
         self.last_prompt_time = 0.0
+        self.first_image_received = False
+        self.last_image_timestamp = None
+        self.first_llm_response_received = False
         
         # LLM processing
         self.llm_request_queue = Queue()
@@ -76,11 +80,19 @@ class StandaloneVisionLLM(Node):
         
         self._setup_subscribers()
         self._setup_publisher()
-        self._setup_timer()
+        # Don't setup timer yet - wait for first image
+        self.prompt_timer = None
         
-        self.get_logger().info(f"Standalone Vision-LLM system started! (Prompt interval: {self.prompt_interval}s)")
+        self.get_logger().debug(f"Standalone Vision-LLM system started! Waiting for first image...")
+        self.get_logger().debug(f"Will generate prompts every {self.prompt_interval}s after first image received")
+        self.get_logger().debug(f"Subscribed to camera: /vehicles/ego/sensors/front_cam/colour")
+        self.get_logger().debug(f"Subscribed to state: /vehicles/ego/sensors/state")
+        self.get_logger().debug(f"Will publish to: /vision_llm/driving_prompt")
         if config_file:
-            self.get_logger().info(f"Loaded config from: {config_file}")
+            self.get_logger().debug(f"Loaded config from: {config_file}")
+        
+        # Remove periodic status check for cleaner output
+        # self.status_timer = self.create_timer(5.0, self._status_check)
     
     def _load_config(self, config_file: Optional[str]) -> Dict[str, Any]:
         """Load configuration from JSON file."""
@@ -90,7 +102,7 @@ class StandaloneVisionLLM(Node):
         try:
             with open(config_file, 'r') as f:
                 config = json.load(f)
-            self.get_logger().info(f"Successfully loaded config from {config_file}")
+            self.get_logger().debug(f"Successfully loaded config from {config_file}")
             self.get_logger().debug(f"Config keys: {list(config.keys())}")
             return config
         except FileNotFoundError:
@@ -149,6 +161,19 @@ class StandaloneVisionLLM(Node):
         """Callback for camera image messages."""
         self.latest_camera_image = msg
         self.camera_callback_count += 1
+        self.last_image_timestamp = msg.header.stamp
+        
+        # Start timer after receiving first image and ensuring we have vehicle state
+        if not self.first_image_received and self.latest_vehicle_state is not None:
+            self.first_image_received = True
+            self.get_logger().debug("First image received with vehicle state available! Requesting first LLM prompt...")
+            # Submit first LLM request but don't start timer yet
+            context = self._prepare_llm_context()
+            self.llm_request_queue.put(context)
+        
+        # Check for first LLM response (to break deadlock)
+        if self.first_image_received and not self.first_llm_response_received:
+            self._check_for_first_llm_response()
         
         if self.camera_callback_count <= 3 or self.camera_callback_count % 20 == 0:
             self.get_logger().debug(
@@ -160,6 +185,14 @@ class StandaloneVisionLLM(Node):
         """Callback for vehicle state messages."""
         self.latest_vehicle_state = msg
         self.state_callback_count += 1
+        
+        # Check if we can start timer now (have both image and state)
+        if not self.first_image_received and self.latest_camera_image is not None:
+            self.first_image_received = True
+            self.get_logger().debug("Vehicle state received with camera image available! Requesting first LLM prompt...")
+            # Submit first LLM request but don't start timer yet
+            context = self._prepare_llm_context()
+            self.llm_request_queue.put(context)
         
         if self.state_callback_count <= 3 or self.state_callback_count % 20 == 0:
             speed = np.sqrt(msg.velocity.x**2 + msg.velocity.y**2 + msg.velocity.z**2)
@@ -184,34 +217,92 @@ class StandaloneVisionLLM(Node):
             # Prepare context for LLM
             context = self._prepare_llm_context()
             
-            # Submit to LLM worker (non-blocking)
-            self.llm_request_queue.put(context)
-            
             # Try to get recent LLM response
             try:
                 llm_response = self.llm_response_queue.get_nowait()
                 if llm_response:
                     self.current_llm_prompt = llm_response
                     
+                    # If this is the first LLM response, start the timer
+                    if not self.first_llm_response_received:
+                        self.first_llm_response_received = True
+                        self._setup_timer()
+                        self.get_logger().debug("First LLM response received! Starting prompt generation timer.")
+                    
                     # Log the complete LLM response
-                    self.get_logger().info("="*80)
-                    self.get_logger().info("[LLM] COMPLETE PROMPT RECEIVED:")
-                    self.get_logger().info("="*80)
-                    self.get_logger().info(f"Task Description: {llm_response.get('task_description', 'N/A')}")
-                    self.get_logger().info(f"Current Objective: {llm_response.get('current_objective', 'N/A')}")
-                    self.get_logger().info(f"Driving Instructions:")
+                    self.get_logger().debug("="*80)
+                    self.get_logger().debug("[LLM] COMPLETE PROMPT RECEIVED:")
+                    self.get_logger().debug("="*80)
+                    self.get_logger().debug(f"Task Description: {llm_response.get('task_description', 'N/A')}")
+                    self.get_logger().debug(f"Current Objective: {llm_response.get('current_objective', 'N/A')}")
+                    self.get_logger().debug(f"Driving Instructions:")
                     for i, instruction in enumerate(llm_response.get('driving_instructions', []), 1):
-                        self.get_logger().info(f"  {i}. {instruction}")
-                    self.get_logger().info(f"Required Skills: {llm_response.get('required_skills', [])}")
-                    self.get_logger().info("="*80)
+                        self.get_logger().debug(f"  {i}. {instruction}")
+                    self.get_logger().debug(f"Required Skills: {llm_response.get('required_skills', [])}")
+                    self.get_logger().debug("="*80)
             except Empty:
                 pass  # No new response available
             
-            # Publish prompt (use latest available or fallback)
-            self._publish_prompt()
+            # Always submit new LLM request for next interval (respecting the timer)
+            self.llm_request_queue.put(context)
+            
+            # Always publish if we have an LLM response (respecting the timer interval)
+            if self.current_llm_prompt:
+                self._publish_prompt()
+            elif not self.first_llm_response_received:
+                self.get_logger().debug("Waiting for first LLM response before publishing any prompts...")
+            else:
+                self.get_logger().debug("Timer interval reached but no LLM response available yet")
             
         except Exception as e:
             self.get_logger().error(f"Error generating prompt: {e}")
+    
+    def _status_check(self):
+        """Periodic status check to help debug issues."""
+        status_msg = f"[STATUS] Camera: {self.camera_callback_count} msgs, State: {self.state_callback_count} msgs"
+        
+        if not self.first_image_received:
+            status_msg += " | Waiting for first image+state"
+        elif not self.first_llm_response_received:
+            status_msg += " | Waiting for first LLM response"
+        else:
+            status_msg += f" | Active (Timer: {self.prompt_timer is not None})"
+        
+        if self.latest_camera_image:
+            status_msg += f" | Last image: {self.latest_camera_image.width}x{self.latest_camera_image.height}"
+        
+        if self.latest_vehicle_state:
+            speed = np.sqrt(self.latest_vehicle_state.velocity.x**2 + self.latest_vehicle_state.velocity.y**2 + self.latest_vehicle_state.velocity.z**2)
+            status_msg += f" | Speed: {speed:.1f} m/s"
+        
+        self.get_logger().debug(status_msg)
+    
+    def _check_for_first_llm_response(self):
+        """Check for first LLM response to break the deadlock."""
+        try:
+            llm_response = self.llm_response_queue.get_nowait()
+            if llm_response:
+                self.current_llm_prompt = llm_response
+                self.first_llm_response_received = True
+                self._setup_timer()
+                self.get_logger().debug("First LLM response received! Starting prompt generation timer.")
+                
+                # Log the complete LLM response
+                self.get_logger().debug("="*80)
+                self.get_logger().debug("[LLM] COMPLETE PROMPT RECEIVED:")
+                self.get_logger().debug("="*80)
+                self.get_logger().debug(f"Task Description: {llm_response.get('task_description', 'N/A')}")
+                self.get_logger().debug(f"Current Objective: {llm_response.get('current_objective', 'N/A')}")
+                self.get_logger().debug(f"Driving Instructions:")
+                for i, instruction in enumerate(llm_response.get('driving_instructions', []), 1):
+                    self.get_logger().debug(f"  {i}. {instruction}")
+                self.get_logger().debug(f"Required Skills: {llm_response.get('required_skills', [])}")
+                self.get_logger().debug("="*80)
+                
+                # Publish the first prompt immediately
+                self._publish_prompt()
+        except Empty:
+            pass  # No response available yet
     
     def _prepare_llm_context(self) -> Dict[str, Any]:
         """Prepare context for LLM including camera image and vehicle state."""
@@ -222,6 +313,11 @@ class StandaloneVisionLLM(Node):
         context = {
             "speed": speed,
             "position": [state.position.x, state.position.y, state.position.z],
+            "orientation": {
+                "dir": [state.dir.x, state.dir.y, state.dir.z],
+                "up": [state.up.x, state.up.y, state.up.z],
+                "front": [state.front.x, state.front.y, state.front.z]
+            },
             "moving": speed > 1.0,
             "timestamp": time.time()
         }
@@ -251,7 +347,7 @@ class StandaloneVisionLLM(Node):
                 img_array = img_array.reshape((msg.height, msg.width, 3))
                 
                 # Convert to PIL Image
-                pil_img = PILImage.fromarray(img_array, 'RGB')
+                pil_img = PILImage.fromarray(img_array)
             else:
                 self.get_logger().warn(f"Unsupported image encoding: {msg.encoding}")
                 return None
@@ -273,66 +369,80 @@ class StandaloneVisionLLM(Node):
     
     def _llm_worker(self):
         """Background worker for LLM API calls."""
+        self.get_logger().debug("[LLM_WORKER] Started LLM worker thread")
         while self._llm_worker_running:
             try:
                 context = self.llm_request_queue.get(timeout=1.0)
                 if context is None:  # Shutdown signal
                     break
                 
+                self.get_logger().debug("[LLM_WORKER] Processing LLM request...")
                 response = self._call_llm(context)
                 if response and self._llm_worker_running:
                     self.llm_response_queue.put(response)
+                    self.get_logger().debug("[LLM_WORKER] LLM response queued successfully")
+                else:
+                    self.get_logger().warn("[LLM_WORKER] LLM call returned no response")
                 
             except Empty:
                 continue
             except Exception as e:
                 if self._llm_worker_running:
-                    self.get_logger().error(f"LLM worker error: {e}")
+                    self.get_logger().error(f"[LLM_WORKER] LLM worker error: {e}")
+                    import traceback
+                    self.get_logger().error(f"[LLM_WORKER] Traceback: {traceback.format_exc()}")
     
     def _call_llm(self, context: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Call LLM API with vision and state context."""
         try:
+            self.get_logger().debug("[LLM_API] Starting LLM API call...")
             import openai
             
             api_key = self.llm_config.get("api_key", "")
             if not api_key:
-                self.get_logger().error("No API key available for LLM call!")
+                self.get_logger().error("[LLM_API] No API key available for LLM call!")
                 return None
                 
-            self.get_logger().debug(f"Making LLM call with API key: {api_key[:10]}...")
+            self.get_logger().debug(f"[LLM_API] Making LLM call with API key: {api_key[:10]}...")
+            self.get_logger().debug(f"[LLM_API] Model: {self.llm_config['model']}")
             
             client = openai.OpenAI(
                 api_key=api_key,
                 base_url="https://openrouter.ai/api/v1"
             )
             
-            system_prompt = """You are an expert driving instructor providing contextual guidance for autonomous vehicle training.
+            system_prompt = """You are an expert off-road driving instructor providing contextual guidance for autonomous vehicle training in challenging terrain.
 
-Generate concise, specific driving prompts based on the current vehicle state and camera view.
+Generate concise, specific off-road driving prompts based on the current vehicle state and camera view. Focus on terrain assessment, traction management, and off-road navigation techniques.
 
 Respond with a JSON object containing:
 {
-    "task_description": "Brief description of current driving task",
-    "current_objective": "Immediate driving objective", 
+    "task_description": "Brief description of current off-road driving task",
+    "current_objective": "Immediate off-road navigation objective", 
     "driving_instructions": ["instruction1", "instruction2", "instruction3"],
     "required_skills": ["skill1", "skill2"]
 }
 
-Focus on:
-- Current driving conditions and vehicle state
-- What you can see in the camera view
-- Specific actions the driver should take
-- Safety considerations
-- Terrain-appropriate guidance"""
+Focus on off-road specific elements:
+- Terrain assessment from camera (rocks, slopes, loose surfaces, obstacles)
+- Vehicle positioning and approach angles for obstacles
+- Traction management (wheel placement, momentum control)
+- Off-road techniques (hill climbing, descent control, rock crawling)
+- Recovery strategies and safe navigation paths
+- Surface conditions impact on vehicle dynamics"""
             
             user_prompt = f"""Current vehicle state:
 - Speed: {context['speed']:.1f} m/s
 - Position: {context['position']}
+- Orientation vectors:
+  - Direction: {context['orientation']['dir']}
+  - Up: {context['orientation']['up']} 
+  - Front: {context['orientation']['front']}
 - Moving: {context['moving']}
 
 Camera view: Provided as image input
 
-Generate appropriate driving guidance for this situation. Consider what you can see in the front camera view and provide specific instructions."""
+Generate appropriate off-road driving guidance for this situation. Consider both the vehicle orientation vectors and what you can see in the front camera view to provide specific terrain-appropriate instructions."""
             
             messages = [
                 {"role": "system", "content": system_prompt}
@@ -358,6 +468,7 @@ Generate appropriate driving guidance for this situation. Consider what you can 
             
             messages.append(user_message)
             
+            self.get_logger().debug("[LLM_API] Sending request to OpenRouter API...")
             response = client.chat.completions.create(
                 model=self.llm_config["model"],
                 messages=messages,
@@ -369,10 +480,15 @@ Generate appropriate driving guidance for this situation. Consider what you can 
                 }
             )
             
-            return self._parse_llm_response(response.choices[0].message.content)
+            self.get_logger().debug("[LLM_API] Received response from API, parsing...")
+            parsed_response = self._parse_llm_response(response.choices[0].message.content)
+            self.get_logger().debug("[LLM_API] Response parsed successfully")
+            return parsed_response
             
         except Exception as e:
-            self.get_logger().error(f"LLM API error: {e}")
+            self.get_logger().error(f"[LLM_API] LLM API error: {e}")
+            import traceback
+            self.get_logger().error(f"[LLM_API] Traceback: {traceback.format_exc()}")
             return None
     
     def _parse_llm_response(self, response_text: str) -> Optional[Dict[str, Any]]:
@@ -384,6 +500,9 @@ Generate appropriate driving guidance for this situation. Consider what you can 
             
             if start_idx != -1 and end_idx > start_idx:
                 json_str = response_text[start_idx:end_idx]
+                # Clean control characters that cause JSON parsing issues
+                import re
+                json_str = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', json_str)
                 return json.loads(json_str)
             else:
                 # Fallback: create structured response from text
@@ -402,28 +521,13 @@ Generate appropriate driving guidance for this situation. Consider what you can 
     def _publish_prompt(self):
         """Publish the current driving prompt."""
         try:
-            # Use latest LLM response or create fallback
-            if self.current_llm_prompt:
-                prompt_data = self.current_llm_prompt
-            else:
-                # Fallback prompt based on vehicle state
-                state = self.latest_vehicle_state
-                speed = np.sqrt(state.velocity.x**2 + state.velocity.y**2 + state.velocity.z**2)
-                
-                if speed < 5:
-                    prompt_data = {
-                        "task_description": "Navigate at low speed with visual guidance",
-                        "current_objective": "Accelerate gradually and observe surroundings", 
-                        "driving_instructions": ["Check camera view", "Accelerate smoothly", "Maintain control"],
-                        "required_skills": ["low_speed_control", "visual_navigation"]
-                    }
-                else:
-                    prompt_data = {
-                        "task_description": "Navigate at moderate speed with visual guidance",
-                        "current_objective": "Maintain safe speed and observe terrain",
-                        "driving_instructions": ["Monitor camera view", "Adapt to terrain", "Maintain safe distance"],
-                        "required_skills": ["speed_control", "visual_navigation"]
-                    }
+            # Only use LLM-generated prompts, no fallbacks
+            if not self.current_llm_prompt:
+                self.get_logger().error("_publish_prompt called without LLM response!")
+                return
+            
+            prompt_data = self.current_llm_prompt
+            self.get_logger().debug("[PROMPT] Publishing LLM-generated prompt")
             
             # Calculate current vehicle speed
             state = self.latest_vehicle_state
@@ -431,7 +535,11 @@ Generate appropriate driving guidance for this situation. Consider what you can 
             
             # Create ROS message
             msg = DrivingPrompt()
-            msg.header.stamp = self.get_clock().now().to_msg()
+            # Use image timestamp if available, otherwise current time
+            if self.last_image_timestamp:
+                msg.header.stamp = self.last_image_timestamp
+            else:
+                msg.header.stamp = self.get_clock().now().to_msg()
             msg.header.frame_id = 'ego'
             
             # Use config values if available, otherwise use defaults or LLM response
@@ -494,6 +602,9 @@ def main(args=None):
                        help='Path to JSON configuration file')
     parser.add_argument('--debug', action='store_true',
                        help='Enable debug logging (shows camera/state details)')
+    parser.add_argument('--log-level', type=str, default='info',
+                       choices=['debug', 'info', 'warn', 'error'],
+                       help='Set log level (default: info)')
     
     parsed_args = parser.parse_args(args)
     
@@ -505,21 +616,40 @@ def main(args=None):
     if parsed_args.model != 'anthropic/claude-3-haiku':
         node.llm_config["model"] = parsed_args.model
     
-    # Set log level based on debug flag
+    # Set log level based on CLI argument (debug flag overrides)
     if parsed_args.debug:
-        node.get_logger().set_level(rclpy.logging.LoggingSeverity.DEBUG)
+        log_level = rclpy.logging.LoggingSeverity.DEBUG
     else:
-        node.get_logger().set_level(rclpy.logging.LoggingSeverity.INFO)
+        log_level_map = {
+            'debug': rclpy.logging.LoggingSeverity.DEBUG,
+            'info': rclpy.logging.LoggingSeverity.INFO,
+            'warn': rclpy.logging.LoggingSeverity.WARN,
+            'error': rclpy.logging.LoggingSeverity.ERROR
+        }
+        log_level = log_level_map[parsed_args.log_level]
     
-    node.get_logger().info(f"Starting with prompt interval: {parsed_args.interval}s, model: {parsed_args.model}")
+    node.get_logger().set_level(log_level)
+    
+    node.get_logger().debug(f"Starting with prompt interval: {parsed_args.interval}s, model: {parsed_args.model}")
     
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("Shutting down standalone vision-LLM system...")
+        node.get_logger().debug("Shutting down standalone vision-LLM system...")
+    except ExternalShutdownException:
+        node.get_logger().debug("External shutdown requested")
+    except rclpy._rclpy_pybind11.RCLError:
+        node.get_logger().debug("RCL context shutdown - terminating gracefully")
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except:
+            pass
+        try:
+            if rclpy.ok():
+                rclpy.shutdown()
+        except:
+            pass
 
 
 if __name__ == '__main__':
