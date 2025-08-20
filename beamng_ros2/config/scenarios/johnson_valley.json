@@ -8,6 +8,7 @@
     {
       "name": "ego",
       "model": "rockbouncer",
+      "_poi": "hard_rocker",
       "pos": [-1168.0, 252.283, 121.961],
       "rot": [0.0172, 0.0615, -0.3321, 0.9402],
       "sensors": [
@@ -37,8 +38,8 @@
             2.0
           ],
           "resolution": [
-            640,
-            480
+            1280,
+            720
           ],
           "field_of_view_y": 70,
           "is_streaming": true,

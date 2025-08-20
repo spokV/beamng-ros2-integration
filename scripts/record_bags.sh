@@ -6,9 +6,12 @@
 # 3. Run vision LLM client: ./scripts/run_llm_prompt_client.sh
 # 4. Run this script to start recording
 
+# Configuration
+HOME_DIR="/home/spok"
+
 # Source ROS2 environment
 source /opt/ros/jazzy/setup.bash
-source /home/spok/ros2_ws/install/setup.bash
+source "$HOME_DIR/ros2_ws/install/setup.bash"
 
 # Parse configuration paths from run_beamng_setup.sh
 SCRIPT_DIR="$(dirname "$0")"
@@ -18,24 +21,30 @@ VISION_CONFIG=$(grep '^VISION_CONFIG=' "$SCRIPT_DIR/run_beamng_setup.sh" | cut -
 # Extract scenario name from config path for folder organization
 SCENARIO_NAME=$(basename "$SCENARIO_CONFIG" .json)
 
-# Create output directory structure: base/scenario_name/bag_folder
-OUTPUT_BASE="/media/spok/data/beamng/rosbags"
-OUTPUT_DIR="$OUTPUT_BASE/$SCENARIO_NAME"
-TIMESTAMP=$(date +%Y%m%d_%H%M%S)
-BAG_NAME="offroad_drive_$TIMESTAMP"
-mkdir -p "$OUTPUT_DIR"
-
 # Handle scenario config path - it starts with /config but needs full path
 if [[ "$SCENARIO_CONFIG" = "/config"* ]]; then
     # Path starts with /config - prepend workspace root
-    SCENARIO_FULL_PATH="/home/spok/ros2_ws/src/beamng-ros2-integration/beamng_ros2$SCENARIO_CONFIG"
+    SCENARIO_FULL_PATH="$HOME_DIR/ros2_ws/src/beamng-ros2-integration/beamng_ros2$SCENARIO_CONFIG"
 elif [[ "$SCENARIO_CONFIG" = /* ]]; then
     # Full absolute path
     SCENARIO_FULL_PATH="$SCENARIO_CONFIG"
 else
     # Relative path - prepend workspace root
-    SCENARIO_FULL_PATH="/home/spok/ros2_ws/src/beamng-ros2-integration/beamng_ros2/$SCENARIO_CONFIG"
+    SCENARIO_FULL_PATH="$HOME_DIR/ros2_ws/src/beamng-ros2-integration/beamng_ros2/$SCENARIO_CONFIG"
 fi
+
+# Extract POI name from scenario config for subfolder
+POI_NAME=$(grep '"_poi"' "$SCENARIO_FULL_PATH" | sed 's/.*"_poi": *"\([^"]*\)".*/\1/' | head -1)
+if [ -z "$POI_NAME" ]; then
+    POI_NAME="default_location"
+fi
+
+# Create output directory structure: base/scenario_name/poi_name/bag_folder
+OUTPUT_BASE="/media/spok/data/beamng/rosbags"
+OUTPUT_DIR="$OUTPUT_BASE/$SCENARIO_NAME/$POI_NAME"
+TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+BAG_NAME="offroad_drive_$TIMESTAMP"
+mkdir -p "$OUTPUT_DIR"
 
 # Function to copy configs after recording
 copy_configs() {
