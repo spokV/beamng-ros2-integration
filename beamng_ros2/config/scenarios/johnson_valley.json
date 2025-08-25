@@ -1,16 +1,16 @@
 {
   "version": 1.0,
-  "level": "johnson_valley",
-  "name": "johnson_valley_vla_training",
+  "level": "american_offroad_island",
+  "name": "american_offroad_island_vla_training",
   "time_of_day": 0.22,
   "_comment": "4 profound lighting conditions: 0.0=Noon (bright overhead), 0.125=Afternoon, 0.22=Sunset (golden hour), 0.375=Midnight (darkness), 0.77=Sunrise (golden hour)",  
   "vehicles": [
     {
       "name": "ego",
       "model": "rockbouncer",
-      "_poi": "rinkey_dink",
-      "pos": [-1072.391, -801.998, 116.361],
-      "rot": [0.060014, -0.047447, -0.462691, 0.883225],
+      "_poi": "track_1",
+      "pos": [210.475, 552.130, 28.533],
+      "rot": [-0.005678, 0.001368, 0.179421, 0.983755],
       "sensors": [
         {
           "name": "electrics",
