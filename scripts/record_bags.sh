@@ -18,9 +18,6 @@ SCRIPT_DIR="$(dirname "$0")"
 SCENARIO_CONFIG=$(grep '^SCENARIO_CONFIG=' "$SCRIPT_DIR/run_beamng_setup.sh" | cut -d'"' -f2)
 VISION_CONFIG=$(grep '^VISION_CONFIG=' "$SCRIPT_DIR/run_beamng_setup.sh" | cut -d'"' -f2)
 
-# Extract scenario name from config path for folder organization
-SCENARIO_NAME=$(basename "$SCENARIO_CONFIG" .json)
-
 # Handle scenario config path - it starts with /config but needs full path
 if [[ "$SCENARIO_CONFIG" = "/config"* ]]; then
     # Path starts with /config - prepend workspace root
@@ -31,6 +28,13 @@ elif [[ "$SCENARIO_CONFIG" = /* ]]; then
 else
     # Relative path - prepend workspace root
     SCENARIO_FULL_PATH="$HOME_DIR/ros2_ws/src/beamng-ros2-integration/beamng_ros2/$SCENARIO_CONFIG"
+fi
+
+# Extract level name from JSON config for folder organization
+SCENARIO_NAME=$(grep '"level"' "$SCENARIO_FULL_PATH" | sed 's/.*"level": *"\([^"]*\)".*/\1/' | head -1)
+if [ -z "$SCENARIO_NAME" ]; then
+    # Fallback to filename if level not found
+    SCENARIO_NAME=$(basename "$SCENARIO_CONFIG" .json)
 fi
 
 # Extract POI name from scenario config for subfolder
