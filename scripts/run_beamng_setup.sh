@@ -11,7 +11,7 @@ BEAMNG_PORT="25252"  # Default BeamNG -tcom port
 BEAMNG_BINARY="/home/spok/Downloads/BeamNG.tech.v0.36.4.0/BinLinux/BeamNG.tech.x64"
 SCENARIO_CONFIG="/config/scenarios/johnson_valley.json"
 VISION_CONFIG="/home/spok/ros2_ws/src/beamng-ros2-integration/configs/vision_prompt_config.json"
-PUBLISH_RATE_SEC="0.01"  # Publish rate in seconds (0.01 = 100Hz, 0.033 = 30Hz, 0.1 = 10Hz)
+PUBLISH_RATE_SEC="0.1"  # Publish rate in seconds (0.01 = 100Hz, 0.033 = 30Hz, 0.1 = 10Hz)
 MAX_WAIT_TIME=60
 CHECK_INTERVAL=2
 
@@ -435,6 +435,11 @@ wait_for_first_prompt() {
     fi
 }
 
+set_oversteer() {
+    oversteer --autocenter 30
+    print_status "Oversteer set to 30"
+}
+
 # Function to cleanup on exit
 cleanup() {
     print_status "Cleaning up..."
@@ -485,6 +490,8 @@ main() {
     print_status "Vision Config: $VISION_CONFIG"
     print_status ""
     
+    set_oversteer
+
     # Step 1: Source ROS environment
     source_ros_environment
     

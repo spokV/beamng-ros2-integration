@@ -67,6 +67,8 @@ ros2 bag record -o \
 "$OUTPUT_DIR/$BAG_NAME" \
 /tf \
 /vehicles/ego/sensors/front_cam/colour \
+/vehicles/ego/sensors/front_cam/depth \
+/vehicles/ego/sensors/front_cam/annotation \
 /vehicles/ego/sensors/state \
 /vehicles/ego/sensors/electrics \
 /vehicles/ego/sensors/imu \

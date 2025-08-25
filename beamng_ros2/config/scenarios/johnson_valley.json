@@ -8,9 +8,9 @@
     {
       "name": "ego",
       "model": "rockbouncer",
-      "_poi": "hard_rocker",
-      "pos": [-1168.0, 252.283, 121.961],
-      "rot": [0.0172, 0.0615, -0.3321, 0.9402],
+      "_poi": "rinkey_dink",
+      "pos": [-1072.391, -801.998, 116.361],
+      "rot": [0.060014, -0.047447, -0.462691, 0.883225],
       "sensors": [
         {
           "name": "electrics",
@@ -31,7 +31,7 @@
         },
         {
           "name": "front_cam",
-          "type": "Camera.default",
+          "type": "Camera.full_vision",
           "pos": [
             0.0,
             -2.1,
@@ -43,7 +43,11 @@
           ],
           "field_of_view_y": 70,
           "is_streaming": true,
-          "is_using_shared_memory": true
+          "is_using_shared_memory": true,
+          "is_render_colours": true,
+          "is_render_annotations": false,
+          "is_render_instance": false,
+          "is_render_depth": true
         },
         {
           "name": "mesh",

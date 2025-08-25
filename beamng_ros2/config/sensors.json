@@ -24,6 +24,31 @@
       "is_render_annotations": false,
       "is_render_instance": false,
       "is_render_depth": false
+    },
+    "full_vision": {
+      "pos": [
+        0,
+        0,
+        3
+      ],
+      "dir": [
+        0,
+        -1,
+        0
+      ],
+      "requested_update_time": 0.02,
+      "is_using_shared_memory": true,
+      "is_streaming": true,
+      "is_visualised": false,
+      "resolution": [
+        512,
+        512
+      ],
+      "field_of_view_y": 120,
+      "is_render_colours": true,
+      "is_render_annotations": true,
+      "is_render_instance": true,
+      "is_render_depth": true
     }
   },
   "gps": {

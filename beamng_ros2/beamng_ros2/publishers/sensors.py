@@ -388,8 +388,30 @@ class CameraPublisher(AutoSensorPublisher):
 
     def publish(self, time: Time) -> None:
         self.sensor = cast(sensors.Camera, self.sensor)
+        # Prefer shared-memory streaming for RGB if enabled
         if self.sensor.is_streaming:
             data = self.sensor.stream_raw()
+            # In streaming mode some modalities (depth/annotation/instance)
+            # may not be included by BeamNG's shared memory. If any requested
+            # channels are missing/empty, fall back to an on-demand poll
+            # and merge those fields so they get published.
+            need_fallback = False
+            for k in ("annotation", "instance", "depth"):
+                if k in self._publishers and not data.get(k):
+                    need_fallback = True
+                    break
+            if need_fallback:
+                try:
+                    extra = self.sensor.poll_raw()
+                    for k in ("annotation", "instance", "depth"):
+                        if k in self._publishers and not data.get(k) and extra.get(k):
+                            data[k] = extra[k]
+                except Exception as e:
+                    # Best-effort: keep RGB streaming even if fallback fails
+                    if self._node:
+                        self._node.get_logger().warning(
+                            f"[{self.name}] Fallback poll_raw() for extra channels failed: {e}"
+                        )
         else:
             data = self.sensor.poll_raw()
         key = "colour"
@@ -398,11 +420,11 @@ class CameraPublisher(AutoSensorPublisher):
                 self._get_img_from_rgb(data[key], time, palette=False)
             )
         for key in ["annotation", "instance"]:
-            if key in self._publishers and data[key]:
+            if key in self._publishers and key in data and data[key]:
                 self._publishers[key].publish(
                     self._get_img_from_rgb(data[key], time, palette=True)
                 )
-        if "depth" in self._publishers and data["depth"]:
+        if "depth" in self._publishers and "depth" in data and data["depth"]:
             self._publishers["depth"].publish(
                 self._get_img_from_depth(data["depth"], time)
             )
