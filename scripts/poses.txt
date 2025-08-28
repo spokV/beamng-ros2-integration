@@ -1,4 +1,5 @@
 Johnson Valley POIs:
+"level": "johnson_valley",
 ---------------------
 "_poi": "hard_rocker",
 "pos": [-1168.0, 252.283, 121.961],
@@ -47,9 +48,75 @@ Johnson Valley POIs:
 American Offroad Island POIs:
 -----------------------------
 "_poi": "track_1",
-"_poi": "track_2",
-"_poi": "track_3",
-"_poi": "track_4",
 "pos": [210.475, 552.130, 28.533],
 "rot": [-0.005678, 0.001368, 0.179421, 0.983755]
+
+Small Island USA POIs:
+"level": "small_island",
+---------------------------
+"_poi": "track_1",
+"pos": [226.648, 35.565, 42.462],
+"rot": [0.001269, -0.000844, 0.421836, 0.906671]
+
+Jungle Rock Island POIs:
+"level": "jungle_rock_island",
+-------------------------------
+"_poi": "track_1",
+"pos": [-693.530, 466.918, 130.285],
+"rot": [-0.000526, -0.005789, -0.999444, 0.032845]
+
+American Offroad Island POIs:
+"level": "american_offroad_island",
+-------------------------------------
+"_poi": "track_1",
+"pos": [426.446, -36.075, 42.936],
+"rot": [-0.003861, 0.004360, 0.709809, 0.704370]
+
+Utah POIs:
+"level": "utah",
+----------------
+"_poi": "short_cliff_crawl",
+"pos": [-566.374, -239.616, 173.342],
+"rot": [0.006975, -0.032511, 0.980192, 0.195240]
+
+"_poi": "dried_up_river_bed",
+
+Cliff POIs:
+"level": "cliff",
+----------------
+"_poi": "get_down",
+"pos": [-124.808, 142.508, 465.377],
+"rot": [-0.004939, 0.000471, -0.000041, 0.999988]
+
+Automation Test Track POIs:
+"level": "automation_test_track",
+-----------------------------
+"_poi": "trail_glacier",
+"pos": [-144.624, 485.442, 134.924],
+"rot": [0.004059, -0.004225, 0.668809, 0.743412]
+
+East Coast USA POIs:
+"level": "east_coast_usa",
+-------------------------
+"_poi": "river_crawl",
+"pos": [-476.329, 431.385, 21.093],
+"rot": [-0.079921, -0.046865, -0.525912, 0.845478]
+
+"_poi": "production_car_trails",
+"pos": [-682.487, -255.573, 26.751],
+"rot": [-0.049230, -0.074240, 0.311012, 0.946222]
+
+Derby POI:
+"level": "derby"
+-----------------
+"_poi": "the_big_8",
+"pos": [-129.458, 201.701, 76.933],
+"rot": [0.011439, 0.010753, 0.828404, 0.559912]
+
+Hirochi Raceway POIs:
+"level": "hirochi_raceway",
+-------------------------
+"_poi": "hirochi_crawl",
+"pos": [-179.446, -50.591, 27.578],
+"rot": [0.057461, -0.050173, 0.050942, 0.995784]
 
